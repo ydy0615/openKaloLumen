@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openkalolumen"
+version = "0.1.0"
+description = "Local CT/MR visualization with GPU isosurfaces, PBR surfaces and lumen inspection"
+requires-python = ">=3.12,<3.13"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+dependencies = [
+  "numpy>=2.0,<3",
+  "scipy>=1.14,<2",
+  "PySide6-Essentials==6.12.0",
+  "vtk==9.7.1",
+  "SimpleITK==2.5.6",
+  "Pillow>=11,<13",
+]
+
+[project.urls]
+Homepage = "https://github.com/ydy0615/openKaloLumen"
+Repository = "https://github.com/ydy0615/openKaloLumen"
+Issues = "https://github.com/ydy0615/openKaloLumen/issues"
+Discussions = "https://github.com/ydy0615/openKaloLumen/discussions"
+
+[project.scripts]
+openkalolumen = "openkalolumen.app:main"
+openkalolumen-samples = "openkalolumen.samples:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.14,<1"]
+build = ["pyinstaller>=6"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/openkalolumen"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "tests/", "scripts/", "packaging/", "docs/", ".github/", "pyproject.toml", "uv.lock", "requirements-segmentation.lock", ".python-version", ".gitignore", "README.md", "CONTRIBUTING.md", "LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+extend-include = ["*.spec"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "D"]
+ignore = ["D100", "D104", "D105", "D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["D"]
+"packaging/*.spec" = ["F821"]

@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Python 3.12 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9
+        with:
+          enable-cache: true
+          python-version: '3.12'
+      - name: Install Linux runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libxcb-cursor0
+      - run: uv sync --locked --group dev
+      - run: uv run --no-sync ruff check src tests scripts packaging
+      - run: uv run --no-sync ruff format --check src tests scripts packaging
+      - run: uv run --no-sync pytest -q
+      - run: uv build
+      - run: uv run --no-sync python scripts/check-distribution.py
+      - name: Check installed wheel outside the source tree
+        shell: bash
+        run: |
+          uv venv "$RUNNER_TEMP/wheel-env" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/wheel-env/bin/python" dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/wheel-env/bin/openkalolumen" --help
+          "$RUNNER_TEMP/wheel-env/bin/openkalolumen-samples" --help
+          "$RUNNER_TEMP/wheel-env/bin/python" -c 'from openkalolumen.desktop.window import MainWindow; from openkalolumen.render.engine import RenderEngine'
+      - name: Native macOS desktop smoke test
+        if: runner.os == 'macOS'
+        env:
+          QT_QPA_PLATFORM: cocoa
+        run: uv run --no-sync python scripts/smoke-desktop.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && runner.os == 'macOS'
+        with:
+          name: desktop-smoke
+          path: outputs/smoke/
+          if-no-files-found: ignore
+          retention-days: 7

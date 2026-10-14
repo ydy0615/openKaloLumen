@@ -1,0 +1,73 @@
+name: Draft release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: validate
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9
+        with:
+          enable-cache: true
+          python-version: '3.12'
+      - name: Verify release tag and build architecture
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          uv run --no-project --python 3.12 python -c 'import os, tomllib; from pathlib import Path; version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]; assert os.environ["RELEASE_TAG"] == "v" + version, "Tag and package version differ"'
+          test "$(uname -m)" = arm64
+      - run: scripts/build-app.sh
+      - name: Smoke test the bundled application
+        run: |
+          dist/openKaloLumen.app/Contents/MacOS/openKaloLumen --demo --data-dir "$RUNNER_TEMP/app-data" --capture outputs/bundle.png --quit-after 20
+          test -s outputs/bundle.png
+          test -f dist/openKaloLumen.app/Contents/Resources/licenses/LICENSE
+      - run: uv build
+      - run: uv run python scripts/check-distribution.py
+      - name: Archive release assets
+        run: |
+          mkdir -p release-assets
+          ditto -c -k --sequesterRsrc --keepParent dist/openKaloLumen.app release-assets/openKaloLumen-macos-arm64.zip
+          cp dist/*.whl dist/*.tar.gz release-assets/
+          cd release-assets
+          shasum -a 256 *.zip *.whl *.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-assets
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 14
+
+  draft:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Create a draft with verified artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" release-assets/* --verify-tag --draft --generate-notes --title "openKaloLumen $RELEASE_TAG"
